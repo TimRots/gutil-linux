@@ -9,6 +9,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"encoding/xml"
 	"flag"
 	"fmt"
 	"log"
@@ -52,6 +53,7 @@ var (
 	showkerneldrivers = flag.Bool("kerneldrivers", false, "Show kernel drivers handling each device.")
 	verbose           = flag.Bool("verbose", false, "Be verbose")
 	veryverbose       = flag.Bool("veryverbose", false, "Be very verbose")
+	xmloutput         = flag.Bool("xml", false, "use XML output format")
 
 	PciDevices []PciDevice
 	errCnt     = 0
@@ -78,6 +80,8 @@ func main() {
 	switch {
 	case *jsonoutput:
 		printDevices("json")
+	case *xmloutput:
+		printDevices("xml")
 	default:
 		printDevices("")
 	}
@@ -90,6 +94,9 @@ func printDevices(opts string, params ...bool) {
 	case "json":
 		jsonObject, _ := json.MarshalIndent(map[string]interface{}{"pcidevices": PciDevices}, "", "    ")
 		fmt.Println(string(jsonObject))
+	case "xml":
+		xmlObject, _ := xml.MarshalIndent(PciDevices, "", "    ")
+		fmt.Println(string(xmlObject))
 	default:
 		tabWriter(PciDevices)
 	}
