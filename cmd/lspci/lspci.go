@@ -236,20 +236,12 @@ func Lookup(searchType, ven, dev, class, subclass string) string {
 func ParsePciDevices() []PciDevice {
 	var devices []string
 
-	buildPath := func(items ...string) string {
-		var path string
-		for _, item := range items {
-			path += item + "/"
-		}
-		return strings.TrimSuffix(path, "/")
-	}
-
 	read := func(bus, filename string) string {
-		return readFromFile(buildPath(PATH_SYS_BUS_PCI_DEVICES, bus, filename), 1)
+		return readFromFile(filepath.Join(PATH_SYS_BUS_PCI_DEVICES, bus, filename), 1)
 	}
 
 	lookupKernelDriver := func(bus string) string {
-		read := readFromFile(buildPath(PATH_SYS_DEVICES_PCI+bus[0:7], bus, "uevent"), 1)
+		read := readFromFile(filepath.Join(PATH_SYS_DEVICES_PCI+bus[0:7], bus, "uevent"), 1)
 		if strings.Contains(read, "DRIVER=") {
 			return read[7:]
 		}
