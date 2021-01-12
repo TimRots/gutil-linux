@@ -186,8 +186,8 @@ func readFromFile(f string, w int) string {
 func Lookup(searchType, ven, dev, class, subclass string) string {
 	var found bool = false
 
+	// Open pci.ids
 	f, err := os.Open("./pci.ids")
-	defer f.Close()
 	if err != nil {
 		errCnt++
 		if errCnt < 2 {
@@ -196,6 +196,12 @@ func Lookup(searchType, ven, dev, class, subclass string) string {
 		*numeric = true
 		return ""
 	}
+	// close pci.ids file when done
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
