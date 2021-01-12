@@ -1,2 +1,3 @@
 # gutil-linux
-Linux commandline utilties written in Go
+
+Linux command line utilities written in Go
