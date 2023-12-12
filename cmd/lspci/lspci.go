@@ -7,17 +7,16 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"encoding/xml"
 	"flag"
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
-	"regexp"
 	"strings"
 	"text/tabwriter"
+
+	"github.com/TimRots/gutil-linux/pci"
 )
 
 const (
@@ -56,7 +55,6 @@ var (
 	xmloutput         = flag.Bool("xml", false, "use XML output format")
 
 	PciDevices []PciDevice
-	errCnt     = 0
 )
 
 func init() {
@@ -88,7 +86,7 @@ func main() {
 }
 
 func printDevices(opts string, params ...bool) {
-	PciDevices := ParsePciDevices()
+	PciDevices, err := pci.ParsePciDevices()
 
 	switch opts {
 	case "json":
@@ -100,9 +98,13 @@ func printDevices(opts string, params ...bool) {
 	default:
 		tabWriter(PciDevices)
 	}
+
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
-func tabWriter(PciDevices []PciDevice) {
+func tabWriter(PciDevices []pci.PciDevice) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
 	defer w.Flush()
 
@@ -156,148 +158,4 @@ func tabWriter(PciDevices []PciDevice) {
 			}
 		}
 	}
-}
-
-func readFromFile(f string, w int) string {
-	var value []string
-
-	file, err := os.Open(f)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close()
-
-	if w == 0 {
-		w = 1
-	}
-	scanner, i, w := bufio.NewScanner(file), 0, w
-	for scanner.Scan() {
-		for _, word := range regexp.MustCompile(`[\S]+`).FindAllString(scanner.Text(), -1) {
-			switch i++; {
-			case i == w:
-				value = append(value, string(word))
-			}
-			return strings.Join(value, " ")
-		}
-	}
-	return ""
-}
-
-func Lookup(searchType, ven, dev, class, subclass string) string {
-	var found bool = false
-
-	// Open pci.ids
-	f, err := os.Open("./pci.ids")
-	if err != nil {
-		errCnt++
-		if errCnt < 2 {
-			fmt.Println("Error: Cannot open pci.ids file, defaulting to numeric")
-		}
-		*numeric = true
-		return ""
-	}
-	// close pci.ids file when done
-	defer func() {
-		if err := f.Close(); err != nil {
-			log.Fatal(err)
-		}
-	}()
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		switch searchType {
-		case "vendor": // Return first occurence of ven that does not have a \t prefix.
-			if strings.Contains(scanner.Text(), ven) && !strings.HasPrefix(scanner.Text(), "\t") {
-				return strings.TrimLeft(scanner.Text(), ven+"  ")
-			}
-
-		case "device": // Return first occurence of dev after vendor is found
-			if strings.Contains(scanner.Text(), ven) && !strings.HasPrefix(scanner.Text(), "\t") {
-				found = true
-			}
-			if strings.HasPrefix(scanner.Text(), "\t"+dev) && found {
-				return strings.TrimLeft(scanner.Text(), "\t\t"+dev+"  ")
-			}
-
-		case "class": // Split class (eg: 0600), search for "C 06" and return first occurence of "\t\t00" therafter.
-			if strings.Contains(scanner.Text(), "C"+" "+class[0:2]) && !strings.HasPrefix(scanner.Text(), "\t") {
-				found = true
-			}
-			if strings.HasPrefix(scanner.Text(), "\t"+class[2:4]) && found {
-				return strings.TrimLeft(scanner.Text(), "\t\t"+class+"  ")
-
-			}
-		case "subsystem": // Match and return line "\t\t vendor subsystem_device"
-			if strings.Contains(scanner.Text(), ven+" "+subclass) {
-				return strings.TrimLeft(scanner.Text(), "\t\t"+ven+" "+subclass)
-			}
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
-	}
-	return "Unknown " + searchType
-}
-
-func ParsePciDevices() []PciDevice {
-	var devices []string
-
-	read := func(bus, filename string) string {
-		return readFromFile(filepath.Join(PATH_SYS_BUS_PCI_DEVICES, bus, filename), 1)
-	}
-
-	lookupKernelDriver := func(bus string) string {
-		read := readFromFile(filepath.Join(PATH_SYS_DEVICES_PCI+bus[0:7], bus, "uevent"), 1)
-		if strings.Contains(read, "DRIVER=") {
-			return read[7:]
-		}
-		return ""
-	}
-
-	// Find all devices in /sys/bus/pci/devices/ and append each device to devices[]
-	if err := filepath.Walk(
-		PATH_SYS_BUS_PCI_DEVICES,
-		func(path string, info os.FileInfo, err error) error {
-			if !info.IsDir() {
-				devices = append(devices, info.Name())
-			}
-			return nil
-		}); err != nil {
-		log.Fatal(err)
-	}
-
-	// Iterate over each bus and parse & append values to PciDevices[]
-	for _, bus := range devices {
-		dev := read(bus, "device")[2:6]
-		ven := read(bus, "vendor")[2:6]
-		class := read(bus, "class")[2:6]
-		subDev := read(bus, "subsystem_device")[2:6]
-		subVen := read(bus, "subsystem_vendor")[2:6]
-		mod := read(bus, "modalias")
-		irq := read(bus, "irq")
-		rev := read(bus, "revision")[2:4]
-
-		venName := Lookup("vendor", ven, "", "", "")
-		devName := Lookup("device", ven, dev, "", "")
-		devClass := Lookup("class", "", "", class, "")
-
-		subSys := ""
-		if subVen != "0000" {
-			subSys = Lookup("subsystem", ven, "", "", subDev)
-		}
-
-		kernelDriver := lookupKernelDriver(bus)
-
-		if !*showdomainnumbers && !*jsonoutput {
-			bus = strings.TrimPrefix(bus, "0000:")
-		}
-
-		PciDevices = append(PciDevices,
-			PciDevice{
-				bus, ven, dev, class, subVen, subDev, irq, rev,
-				venName, devName, devClass, subSys, "", mod, kernelDriver,
-			},
-		)
-	}
-	return PciDevices
 }
