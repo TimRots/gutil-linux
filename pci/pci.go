@@ -68,8 +68,6 @@ func readFromFile(f string, w, start, end int) (string, error) {
 					return "", errors.New("invalid start:end")
 				}
 				return ret[start:end], nil
-			} else {
-				return ret, nil
 			}
 		}
 	}
@@ -78,13 +76,15 @@ func readFromFile(f string, w, start, end int) (string, error) {
 
 func ParsePciDevices() (PciDevices []PciDevice, err error) {
 	var devices []string
+	var path string
 
 	read := func(bus, filename string, start, end int) (string, error) {
 		return readFromFile(filepath.Join(PATH_SYS_BUS_PCI_DEVICES, bus, filename), 1, start, end)
 	}
 
 	lookupKernelDriver := func(bus string) (string, error) {
-		read, err := readFromFile(filepath.Join(PATH_SYS_DEVICES_PCI+bus[0:7], bus, "uevent"), 1, 0, 0)
+		path = filepath.Join(PATH_SYS_BUS_PCI_DEVICES, bus, "uevent")
+		read, err := readFromFile(path, 1, 0, 0)
 		if err != nil {
 			return "", err
 		}
