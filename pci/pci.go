@@ -68,6 +68,8 @@ func readFromFile(f string, w, start, end int) (string, error) {
 					return "", errors.New("invalid start:end")
 				}
 				return ret[start:end], nil
+			} else {
+				return ret, nil
 			}
 		}
 	}
